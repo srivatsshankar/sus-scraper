@@ -63,12 +63,11 @@ async function leaderboardList(context:Devvit.Context) {
   const leaderboard = await context.redis.zRange(postId, 0, 4, { by: 'rank' });
 
   // Reverse the array to get descending order
-  return leaderboard;
+  return leaderboard.reverse();
 }
 
 async function highscoreVerify(context:Devvit.Context, score: number) {
   const postId = 'leaderboard';
-  console.log('test highscore');
   
   // Fetch the last 5 members in descending order
   const totalMembers = await context.redis.zCard(postId);

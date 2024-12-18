@@ -1,7 +1,7 @@
 class GameScene extends Phaser.Scene {
     constructor() {
         super({ key: 'GameScene' });
-        this.gameTime = 10; // 90 seconds
+        this.gameTime = 90; // 90 seconds
         this.isGameActive = true;
         this.finalHeight = 0;
         // Initialize class properties
