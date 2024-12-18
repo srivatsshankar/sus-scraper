@@ -1,32 +1,102 @@
-import './createPost.js';
-
 import { Devvit, useState } from '@devvit/public-api';
+import './scheduler.js';
 
 // Defines the messages that are exchanged between Devvit and Web View
 type WebViewMessage =
   | {
       type: 'initialData';
-      data: { username: string; currentCounter: number };
+      data: {
+        shapes: { type: string; size: number }[];
+        shapeGroups: { [key: string]: { count: number } };
+      };
     }
   | {
-      type: 'setCounter';
-      data: { newCounter: number };
+      type: 'userData';
+      data: {
+        username: string;
+        score: number;
+        highScore: boolean;
+      };
     }
   | {
-      type: 'updateCounter';
-      data: { currentCounter: number };
-    };
+      type: 'userScore';
+      data: {
+        score: number;
+      };
+    }
+  | {
+      type: 'leaderboard';
+      data: {
+        leaderboard: { member: string; score: number };
+      };
+  };
 
 Devvit.configure({
   redditAPI: true,
   redis: true,
 });
 
+async function userScoreVerify(context:Devvit.Context, username: string, score: number) {
+  const postId = 'leaderboard';
+  const exists = await context.redis.zScore(postId, username);
+  if (exists) {
+    if (score > exists) {
+      await context.redis.zAdd(
+        postId,
+        { member: username, score: score }
+      );
+    }
+  } else {
+    console.log('New high score:', score);
+    await context.redis.zAdd(
+      postId,
+      { member: username, score: score }
+    );
+  }
+}
+
+async function leaderboardList(context:Devvit.Context) {
+  const postId = 'leaderboard';
+  
+  // Fetch the last 5 members in descending order
+  const totalMembers = await context.redis.zCard(postId);
+  const leaderboard = await context.redis.zRange(postId, 0, 4, { by: 'rank' });
+
+  // Reverse the array to get descending order
+  return leaderboard;
+}
+
+async function highscoreVerify(context:Devvit.Context, score: number) {
+  const postId = 'leaderboard';
+  console.log('test highscore');
+  
+  // Fetch the last 5 members in descending order
+  const totalMembers = await context.redis.zCard(postId);
+  const leaderboard = await context.redis.zRange(postId, 0, 10, { by: 'rank' });
+
+  // Check if score is higher than any leaderboard entry or if leaderboard isn't full
+  let highScore = false;
+  if (leaderboard.length < 5) {
+    highScore = true;
+  } else {
+    for (const entry of leaderboard) {
+      if (score > entry.score) {
+        highScore = true;
+        break;
+      }
+    }
+  }
+
+  // Reverse the array to get descending order
+  return highScore;
+}
+
 // Add a custom post type to Devvit
 Devvit.addCustomPostType({
-  name: 'Webview Example',
+  name: 'Suspicious Skyscraper',
   height: 'tall',
   render: (context) => {
+
     // Load username with `useAsync` hook
     const [username] = useState(async () => {
       const currUser = await context.reddit.getCurrentUser();
@@ -34,87 +104,68 @@ Devvit.addCustomPostType({
     });
 
     // Load latest counter from redis with `useAsync` hook
-    const [counter, setCounter] = useState(async () => {
-      const redisCount = await context.redis.get(`counter_${context.postId}`);
-      return Number(redisCount ?? 0);
+    const [shapes] = useState(async () => {
+      const postId = context.postId;
+      const postIdshape = postId + 'shapes';
+      const shapes = await context.redis.hGetAll(postIdshape);
+      return shapes.shapes;
     });
 
-    // Create a reactive state for web view visibility
-    const [webviewVisible, setWebviewVisible] = useState(false);
+    const [shapeGroups] = useState(async () => {
+      const postId = context.postId;
+      const postIdshape = postId + 'shapes';
+      const shapes = await context.redis.hGetAll(postIdshape);
+      return shapes.shapeGroups;
+    });
+    
+    const [webviewVisible, setWebviewVisible] = useState(true);
 
-    // When the web view invokes `window.parent.postMessage` this function is called
     const onMessage = async (msg: WebViewMessage) => {
       switch (msg.type) {
-        case 'setCounter':
-          await context.redis.set(`counter_${context.postId}`, msg.data.newCounter.toString());
+        case 'initialData':
           context.ui.webView.postMessage('myWebView', {
-            type: 'updateCounter',
+            type: 'initialData',
             data: {
-              currentCounter: msg.data.newCounter,
+              shapes: shapes,
+              shapeGroups: shapeGroups,
             },
           });
-          setCounter(msg.data.newCounter);
           break;
-        case 'initialData':
-        case 'updateCounter':
+        case 'userData':
+          const highScore = await highscoreVerify(context, msg.data.score);
+          context.ui.webView.postMessage('myWebView', {
+            type: 'userData',
+            data: {
+              username: username,
+              highScore: highScore,
+            },
+          });
           break;
-
-        default:
-          throw new Error(`Unknown message type: ${msg satisfies never}`);
-      }
+        case 'userScore':
+          userScoreVerify(context, username, msg.data.score);
+          break;
+        case 'leaderboard':
+          const leaderboard = await leaderboardList(context);
+          context.ui.webView.postMessage('myWebView', {
+            type: 'leaderboard',
+            data: {
+              leaderboard: leaderboard,
+            },
+          });
+          break;
+        };
     };
 
-    // When the button is clicked, send initial data to web view and show it
-    const onShowWebviewClick = () => {
-      setWebviewVisible(true);
-      context.ui.webView.postMessage('myWebView', {
-        type: 'initialData',
-        data: {
-          username: username,
-          currentCounter: counter,
-        },
-      });
-    };
-
-    // Render the custom post type
     return (
       <vstack grow padding="small">
-        <vstack
-          grow={!webviewVisible}
-          height={webviewVisible ? '0%' : '100%'}
-          alignment="middle center"
-        >
-          <text size="xlarge" weight="bold">
-            Example App
-          </text>
-          <spacer />
-          <vstack alignment="start middle">
-            <hstack>
-              <text size="medium">Username:</text>
-              <text size="medium" weight="bold">
-                {' '}
-                {username ?? ''}
-              </text>
-            </hstack>
-            <hstack>
-              <text size="medium">Current counter:</text>
-              <text size="medium" weight="bold">
-                {' '}
-                {counter ?? ''}
-              </text>
-            </hstack>
-          </vstack>
-          <spacer />
-          <button onPress={onShowWebviewClick}>Launch App</button>
-        </vstack>
         <vstack grow={webviewVisible} height={webviewVisible ? '100%' : '0%'}>
           <vstack border="thick" borderColor="black" height={webviewVisible ? '100%' : '0%'}>
             <webview
               id="myWebView"
-              url="page.html"
-              onMessage={(msg) => onMessage(msg as WebViewMessage)}
+              url="index.html"
               grow
               height={webviewVisible ? '100%' : '0%'}
+              onMessage={(msg) => onMessage(msg as WebViewMessage)}
             />
           </vstack>
         </vstack>
