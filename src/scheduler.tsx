@@ -30,12 +30,6 @@ async function daily_job(context:Devvit.Context, postId: string) {
     shapes: JSON.stringify(shapes),
     shapeGroups: JSON.stringify(shapeGroups),
   });
-
-  // Get the groceryList record
-  // const record = await context.redis.hGetAll(postIdshape);
-  // const shapesR = JSON.parse(record.shapes);
-  // console.log('Shapes:', shapesR);
-  // console.log('Shape Groups:', record.shapeGroups);
 }
 
 // Add a scheduler job to generate a post daily
@@ -54,9 +48,29 @@ Devvit.addSchedulerJob({
         </vstack>
       ),
     });
-    const currentPostId = context.postId;
-    console.log(`The current post ID is: ${currentPostId}`);
-    console.log('daily_thread handler called');
+    const postId = resp.id;
+    const shapeTypes = ['square', 'rectangle', 'rhombus', 'trapezoid', 'triangle', 'rightTriangle', 'circle'];
+    const shapes = [];
+    const shapeGroups: { [key: string]: { count: number } } = {};
+    const postIdshape = postId + 'shapes';
+    
+    // 2. Generate random shapes
+    const numShapes = Math.floor(Math.random() * (16 - 9 + 1)) + 9;
+    for (let i = 0; i < numShapes; i++) {
+        const type = shapeTypes[Math.floor(Math.random() * shapeTypes.length)];
+        const size = Math.floor(Math.random() * (50 - 30 + 1)) + 30;
+        shapes.push({ type, size });
+        
+        if (!shapeGroups[type]) {
+            shapeGroups[type] = { count: 0 };
+        }
+        shapeGroups[type].count++;
+    }
+    
+    await context.redis.hSet(postIdshape, {
+      shapes: JSON.stringify(shapes),
+      shapeGroups: JSON.stringify(shapeGroups),
+    });
   },
 });
 
@@ -96,7 +110,6 @@ Devvit.addMenuItem({
     });
     await context.redis.set('daily_thread:jobId', jobId);
     context.ui.showToast('Scheduled daily_thread job');
-    console.log('Scheduled daily_thread job with id:', jobId);
   },
 });
 

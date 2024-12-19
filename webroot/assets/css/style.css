@@ -1,6 +1,6 @@
 @font-face {
     font-family: 'Carrier Command';
-    src: url('/assets/fonts/carrier-command.ttf');
+    src: url('/assets/fonts/carrier-command.ttf') format('truetype');
 }
 
 body {

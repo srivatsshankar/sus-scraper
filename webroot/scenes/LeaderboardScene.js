@@ -158,7 +158,7 @@ class LeaderboardScene extends Phaser.Scene {
                 .setOrigin(0.5);
         
             // Format and display score
-            const formattedScore = `${entry.member} - ${entry.score}m`;
+            const formattedScore = `u/${entry.member} - ${entry.score}m`;
             const scoreText = this.add.text(400, yPos, formattedScore, {
                 fontFamily: '"Carrier Command", monospace',
                 fontSize: '16px',
